@@ -883,10 +883,25 @@ model_example_map = {
 }
 
 
-def run_generate(model, question: str, image_urls: list[str], seed: Optional[int]):
+def run_generate(
+    model,
+    question: str,
+    image_urls: list[str],
+    seed: Optional[int],
+    enforce_eager: bool = False,
+):
     req_data = model_example_map[model](question, image_urls)
 
-    engine_args = asdict(req_data.engine_args) | {"seed": args.seed}
+    engine_args_dict = asdict(req_data.engine_args)
+    # If enforce_eager is True, use True; otherwise keep the previously setup value
+    if enforce_eager:
+        final_enforce_eager = True
+    else:
+        final_enforce_eager = engine_args_dict.get("enforce_eager", False)
+    engine_args = engine_args_dict | {
+        "seed": seed,
+        "enforce_eager": final_enforce_eager,
+    }
     llm = LLM(**engine_args)
 
     sampling_params = SamplingParams(
@@ -909,7 +924,13 @@ def run_generate(model, question: str, image_urls: list[str], seed: Optional[int
         print("-" * 50)
 
 
-def run_chat(model: str, question: str, image_urls: list[str], seed: Optional[int]):
+def run_chat(
+    model: str,
+    question: str,
+    image_urls: list[str],
+    seed: Optional[int],
+    enforce_eager: bool = False,
+):
     req_data = model_example_map[model](question, image_urls)
 
     # Disable other modalities to save memory
@@ -918,7 +939,17 @@ def run_chat(model: str, question: str, image_urls: list[str], seed: Optional[in
         req_data.engine_args.limit_mm_per_prompt or {}
     )
 
-    engine_args = asdict(req_data.engine_args) | {"seed": seed}
+    engine_args_dict = asdict(req_data.engine_args)
+    # If enforce_eager is True, use True; otherwise keep the previously setup value
+    if enforce_eager:
+        final_enforce_eager = True
+    else:
+        final_enforce_eager = engine_args_dict.get("enforce_eager", False)
+    engine_args = engine_args_dict | {
+        "seed": seed,
+        "enforce_eager": final_enforce_eager,
+    }
+
     llm = LLM(**engine_args)
 
     sampling_params = SamplingParams(
@@ -983,6 +1014,11 @@ def parse_args():
         help="Set the seed when initializing `vllm.LLM`.",
     )
     parser.add_argument(
+        "--enforce-eager",
+        action="store_true",
+        help="Enable enforce_eager mode when initializing `vllm.LLM`.",
+    )
+    parser.add_argument(
         "--num-images",
         "-n",
         type=int,
@@ -997,13 +1033,14 @@ def main(args: Namespace):
     model = args.model_type
     method = args.method
     seed = args.seed
+    enforce_eager = args.enforce_eager
 
     image_urls = IMAGE_URLS[: args.num_images]
 
     if method == "generate":
-        run_generate(model, QUESTION, image_urls, seed)
+        run_generate(model, QUESTION, image_urls, seed, enforce_eager)
     elif method == "chat":
-        run_chat(model, QUESTION, image_urls, seed)
+        run_chat(model, QUESTION, image_urls, seed, enforce_eager)
     else:
         raise ValueError(f"Invalid method: {method}")
 
