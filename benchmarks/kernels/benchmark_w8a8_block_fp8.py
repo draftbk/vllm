@@ -22,8 +22,8 @@ from vllm.utils.argparse_utils import FlexibleArgumentParser
 
 mp.set_start_method("spawn", force=True)
 
-assert current_platform.is_cuda(), (
-    "Only support tune w8a8 block fp8 kernel on CUDA device."
+assert current_platform.is_cuda() or current_platform.is_rocm(), (
+    "Only support tune w8a8 block fp8 kernel on CUDA/ROCm device."
 )
 
 DTYPE_MAP = {
@@ -136,38 +136,15 @@ def get_configs_compute_bound():
 
 
 def get_weight_shapes(tp_size):
-    # NOTE(HandH1998): The weight shapes only works for DeepSeek-V3.
-    # Modify them, if you tune for another different model.
-    # cannot TP
-    total = [
-        (512 + 64, 7168),
-        (2112, 7168),
-        ((128 + 64) * 128, 7168),
-        (128 * (128 + 128), 512),
-        (7168, 16384),
-        (7168, 18432),
+    # NOTE: Weight shapes for Qwen3-Next-80B-A3B-Instruct-FP8 (tp_size=1)
+    # These are the shapes that were missing configs based on runtime warnings.
+    # Format: (N, K) where the matmul is M x K @ K x N
+    weight_shapes = [
+        (12288, 2048),  # N=12288, K=2048
+        (2048, 4096),  # N=2048, K=4096
+        (1024, 2048),  # N=1024, K=2048
+        (9216, 2048),  # N=9216, K=2048
     ]
-    # N can TP
-    n_tp = [
-        (18432 * 2, 7168),
-        ((128 + 64) * 128, 7168),
-        (128 * (128 + 128), 512),
-        (24576, 1536),
-        (12288, 7168),
-        (4096, 7168),
-    ]
-    # K can TP
-    k_tp = [(7168, 18432), (7168, 16384), (7168, 2048)]
-
-    weight_shapes = []
-    for t in total:
-        weight_shapes.append(t)
-    for n_t in n_tp:
-        new_t = (n_t[0] // tp_size, n_t[1])
-        weight_shapes.append(new_t)
-    for k_t in k_tp:
-        new_t = (k_t[0], k_t[1] // tp_size)
-        weight_shapes.append(new_t)
     return weight_shapes
 
 
